@@ -208,19 +208,19 @@ func parseEnvelopedData(data []byte) (*PKCS7, error) {
 // Verify checks the signatures of a PKCS7 object
 // WARNING: Verify does not check signing time or verify certificate chains at
 // this time.
-func (p7 *PKCS7) Verify() (err error) {
+func (p7 *PKCS7) Verify(alg x509.SignatureAlgorithm) (err error) {
 	if len(p7.Signers) == 0 {
 		return errors.New("pkcs7: Message has no signers")
 	}
 	for _, signer := range p7.Signers {
-		if err := verifySignature(p7, signer); err != nil {
+		if err := verifySignature(p7, signer, alg); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func verifySignature(p7 *PKCS7, signer signerInfo) error {
+func verifySignature(p7 *PKCS7, signer signerInfo, alg x509.SignatureAlgorithm) error {
 	signedData := p7.Content
 	if len(signer.AuthenticatedAttributes) > 0 {
 		// TODO(fullsailor): First check the content type match
@@ -254,8 +254,7 @@ func verifySignature(p7 *PKCS7, signer signerInfo) error {
 		return errors.New("pkcs7: No certificate for signer")
 	}
 
-	algo := x509.SHA1WithRSA
-	return cert.CheckSignature(algo, signedData, signer.EncryptedDigest)
+	return cert.CheckSignature(alg, signedData, signer.EncryptedDigest)
 }
 
 func marshalAttributes(attrs []attribute) ([]byte, error) {
@@ -274,6 +273,7 @@ func marshalAttributes(attrs []attribute) ([]byte, error) {
 
 var (
 	oidDigestAlgorithmSHA1    = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
+	oidDigestAlgorithmSHA255  = asn1.ObjectIdentifier{2, 16, 840, 1, 101, 3, 4, 2, 1}
 	oidEncryptionAlgorithmRSA = asn1.ObjectIdentifier{1, 2, 840, 113549, 1, 1, 1}
 )
 
@@ -290,6 +290,10 @@ func getHashForOID(oid asn1.ObjectIdentifier) (crypto.Hash, error) {
 	switch {
 	case oid.Equal(oidDigestAlgorithmSHA1):
 		return crypto.SHA1, nil
+	case oid.Equal(oidDigestAlgorithmSHA255):
+		return crypto.SHA256, nil
+	default:
+		return crypto.SHA256, nil
 	}
 	return crypto.Hash(0), ErrUnsupportedAlgorithm
 }
